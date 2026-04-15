@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SpendWise Pro | Pure Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+        
+        :root {
+            --primary: #000000;
+            --accent: #007AFF;
+            --bg: #FFFFFF;
+            --subtle: #F5F5F7;
+            --text-main: #1D1D1F;
+            --text-sub: #86868B;
+            --error: #FF3B30;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--bg);
+            color: var(--text-main);
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            letter-spacing: -0.01em;
+        }
+
+        .pure-glass {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+        }
+
+        .soft-card {
+            background: #FFFFFF;
+            border-radius: 28px;
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.03);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .soft-card:active {
+            transform: scale(0.98);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.02);
+        }
+
+        .btn-pure {
+            background: var(--primary);
+            color: #FFFFFF;
+            transition: all 0.2s ease;
+        }
+        .btn-pure:active { opacity: 0.8; transform: scale(0.97); }
+
+        .clean-input {
+            background: var(--subtle);
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            color: var(--text-main);
+        }
+        .clean-input:focus {
+            background: #FFFFFF;
+            border-color: rgba(0,0,0,0.1);
+            box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.05);
+            outline: none;
+        }
+
+        .hidden-section { display: none !important; }
+        .error-msg { color: var(--error); font-size: 10px; font-weight: 700; text-transform: lowercase; margin-top: 5px; letter-spacing: 0.5px;}
+
+        .total-card-pure {
+            background: linear-gradient(150deg, #FFFFFF 0%, #F5F5F7 100%);
+            border: 1px solid rgba(0, 0, 0, 0.03);
+        }
+
+        #customAlert {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            z-index: 9999;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #customAlert.show { transform: translateX(-50%) translateY(0); }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        #expenseChart { filter: saturate(120%); }
+    </style>
+</head>
+<body class="pb-10">
+
+    <div id="customAlert" class="pure-glass px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-4 min-w-[280px]">
+        <div id="alertIcon" class="w-8 h-8 rounded-full flex items-center justify-center"></div>
+        <p id="alertText" class="text-xs font-bold uppercase tracking-wider"></p>
+    </div>
+
+    <div id="authContainer" class="min-h-screen flex items-center justify-center p-6 bg-subtle">
+        <div class="w-full max-w-sm soft-card p-10 bg-white text-center">
+            <div class="inline-flex p-4 rounded-3xl bg-subtle border border-gray-100 mb-6 shadow-inner">
+                <svg class="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <h2 class="text-4xl font-extrabold tracking-tighter">Spend<span class="font-light text-sub">Wise</span></h2>
+            <p class="text-sub text-[10px] mt-1 uppercase tracking-widest font-bold mb-10">Pure Edition</p>
+            
+            <div class="space-y-4 text-left">
+                <div>
+                    <input type="email" id="authEmail" class="w-full clean-input rounded-xl p-4 text-sm" placeholder="e-mail">
+                    <span id="errorEmail" class="error-msg block px-2"></span>
+                </div>
+                <div>
+                    <input type="password" id="authPassword" class="w-full clean-input rounded-xl p-4 text-sm" placeholder="senha">
+                    <span id="errorPassword" class="error-msg block px-2"></span>
+                </div>
+                
+                <div class="flex flex-col gap-3 pt-4">
+                    <button onclick="handleLogin()" class="w-full btn-pure text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Entrar</button>
+                    <button onclick="handleSignUp()" class="w-full text-sub font-bold py-2 text-[10px] uppercase tracking-widest hover:text-accent transition-colors">Cadastre-se</button>
+                </div>
+                <span id="errorGeneral" class="error-msg text-center block"></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="appContainer" class="max-w-md mx-auto px-4 pt-6 hidden-section">
+        <header class="flex justify-between items-center mb-6 px-2">
+            <div>
+                <h1 class="text-2xl font-black text-main tracking-tighter">FINANCE<span class="font-light text-sub">.PRO</span></h1>
+                <p id="userGreeting" class="text-[9px] text-sub font-bold uppercase tracking-widest"></p>
+            </div>
+            <button onclick="handleLogout()" class="w-10 h-10 rounded-full soft-card flex items-center justify-center text-red-500 hover:bg-red-50">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            </button>
+        </header>
+
+        <div class="total-card-pure rounded-[32px] p-7 mb-7 relative overflow-hidden shadow-sm">
+            <p class="text-[10px] font-bold text-sub uppercase tracking-[0.2em] mb-1.5">Balanço do Período</p>
+            <h2 id="totalDisplay" class="text-5xl font-extrabold text-main tracking-tighter mb-4">R$ 0,00</h2>
+            <div class="flex justify-between items-center gap-4">
+                <div class="h-[100px] w-[100px] relative">
+                    <canvas id="expenseChart"></canvas>
+                </div>
+                <button onclick="closeMonth()" class="btn-pure px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest">Fechar Mês</button>
+            </div>
+        </div>
+
+        <section class="mb-7">
+            <div class="soft-card p-6 border border-gray-100 bg-white">
+                <div class="mb-4 text-center">
+                    <input type="number" id="amount" placeholder="0.00" class="w-full bg-transparent text-5xl font-black text-main outline-none text-center py-2 tracking-tight">
+                    <div id="errorAmount" class="error-msg text-center mt-1"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <select id="category" class="clean-input rounded-xl p-3.5 text-xs font-semibold text-main appearance-none text-center">
+                        <option>Alimentação</option><option>Transporte</option><option>Lazer</option>
+                        <option>Saúde</option><option>Moradia</option><option>Educação</option>
+                    </select>
+                    <input type="text" id="note" placeholder="Nota" class="clean-input rounded-xl p-3.5 text-xs">
+                </div>
+                <button onclick="addExpense()" class="w-full btn-pure py-4 rounded-xl font-bold uppercase tracking-widest text-xs">Registrar Gasto</button>
+            </div>
+        </section>
+
+        <div class="flex gap-2.5 overflow-x-auto no-scrollbar mb-6 px-1">
+            <select id="fCat" onchange="applyFilters()" class="flex-shrink-0 pure-glass rounded-full px-4 py-2.5 text-[10px] font-semibold uppercase text-sub outline-none">
+                <option value="Todas">Todas Categorias</option>
+                <option>Alimentação</option><option>Transporte</option><option>Lazer</option>
+                <option>Saúde</option><option>Moradia</option><option>Educação</option>
+            </select>
+            <input type="date" id="fStart" onchange="applyFilters()" class="flex-shrink-0 pure-glass rounded-full px-4 py-2.5 text-[10px] font-semibold uppercase text-sub outline-none">
+            <button onclick="resetFilters()" class="flex-shrink-0 pure-glass rounded-full px-4 py-2.5 text-[10px] font-semibold uppercase text-red-500">Limpar</button>
+        </div>
+
+        <div class="space-y-4 mb-10">
+            <h3 class="text-xs font-bold text-sub uppercase tracking-[0.2em] px-2 flex justify-between">Lançamentos <span id="countDisplay">0</span></h3>
+            <div id="historyList" class="space-y-2.5"></div>
+        </div>
+
+        <div class="space-y-4">
+            <h3 class="text-xs font-bold text-sub uppercase tracking-[0.2em] px-2">Histórico</h3>
+            <div id="closedMonthsList" class="grid grid-cols-1 gap-4"></div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCoQMsLBibpp14dILtemMuWBzTj_3mu2ZE",
+            authDomain: "spendwise-a92b3.firebaseapp.com",
+            projectId: "spendwise-a92b3",
+            storageBucket: "spendwise-a92b3.firebasestorage.app",
+            messagingSenderId: "64183948055",
+            appId: "1:64183948055:web:da38ae8f595c8e87771d52",
+            measurementId: "G-G3ZM9WC96M"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        let allExpenses = [];
+        let myChart = null;
+        const categories = ["Alimentação", "Transporte", "Lazer", "Saúde", "Moradia", "Educação"];
+        const categoryColors = ['#000000', '#007AFF', '#FF9500', '#FF3B30', '#34C759', '#5856D6'];
+
+        function showAlert(msg, type = 'success') {
+            const alert = document.getElementById('customAlert');
+            const icon = document.getElementById('alertIcon');
+            const text = document.getElementById('alertText');
+            text.innerText = msg;
+            text.style.color = type === 'success' ? '#1D1D1F' : '#FF3B30';
+            icon.style.backgroundColor = type === 'success' ? '#34C759' : '#FF3B30';
+            icon.innerHTML = type === 'success' ? 
+                '<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : 
+                '<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>';
+            alert.classList.add('show');
+            setTimeout(() => alert.classList.remove('show'), 3000);
+        }
+
+        function clearAuthErrors() { 
+            document.querySelectorAll('.error-msg').forEach(e => e.innerText = ""); 
+        }
+
+        async function handleLogin() {
+            clearAuthErrors();
+            const email = document.getElementById('authEmail').value.trim();
+            const pass = document.getElementById('authPassword').value;
+            if (!email || !pass) return document.getElementById('errorGeneral').innerText = "campos obrigatórios";
+            try {
+                await auth.signInWithEmailAndPassword(email, pass);
+                showAlert("Acesso autorizado");
+            } catch (e) {
+                if (e.code === 'auth/wrong-password') document.getElementById('errorPassword').innerText = "senha inválida";
+                else if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-email') document.getElementById('errorEmail').innerText = "e-mail inválido";
+                else document.getElementById('errorGeneral').innerText = "senha inválida";
+            }
+        }
+
+        async function handleSignUp() {
+            clearAuthErrors();
+            const email = document.getElementById('authEmail').value.trim();
+            const pass = document.getElementById('authPassword').value;
+            if (!email || !pass) return document.getElementById('errorGeneral').innerText = "campos obrigatórios";
+            if (pass.length < 6) return document.getElementById('errorPassword').innerText = "senha inválida";
+            try {
+                await auth.createUserWithEmailAndPassword(email, pass);
+                showAlert("Conta criada com sucesso");
+            } catch (e) {
+                if (e.code === 'auth/email-already-in-use') document.getElementById('errorEmail').innerText = "e-mail já está em uso";
+                else document.getElementById('errorEmail').innerText = "e-mail incorreto";
+            }
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                document.getElementById('authContainer').classList.add('hidden-section');
+                document.getElementById('appContainer').classList.remove('hidden-section');
+                document.getElementById('userGreeting').innerText = user.email.split('@')[0];
+                startSync(user.uid);
+            } else {
+                document.getElementById('authContainer').classList.remove('hidden-section');
+                document.getElementById('appContainer').classList.add('hidden-section');
+            }
+        });
+
+        function handleLogout() { auth.signOut(); showAlert("Sessão encerrada"); }
+
+        function startSync(uid) {
+            db.collection("expenses").where("userId", "==", uid).onSnapshot(s => {
+                allExpenses = s.docs.map(d => ({ id: d.id, ...d.data() }));
+                applyFilters();
+            });
+            db.collection("closed_months").where("userId", "==", uid).onSnapshot(s => {
+                renderClosedMonths(s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.closedAt - a.closedAt));
+            });
+        }
+
+        async function addExpense() {
+            const amtF = document.getElementById('amount');
+            const val = parseFloat(amtF.value);
+            if (!val || val <= 0) {
+                document.getElementById('errorAmount').innerText = "valor inválido";
+                return;
+            }
+            document.getElementById('errorAmount').innerText = "";
+            await db.collection("expenses").add({
+                userId: auth.currentUser.uid, 
+                category: document.getElementById('category').value,
+                note: document.getElementById('note').value.trim(), 
+                amount: val, 
+                dateISO: new Date().toISOString().split('T')[0],
+                rawDate: Date.now()
+            });
+            amtF.value = ''; document.getElementById('note').value = '';
+            showAlert("Gasto registrado");
+        }
+
+        async function deleteItem(id) {
+            await db.collection("expenses").doc(id).delete();
+            showAlert("Removido", "error");
+        }
+
+        async function deleteClosedMonth(id) {
+            if (confirm("Deseja excluir este registro permanentemente?")) {
+                await db.collection("closed_months").doc(id).delete();
+                showAlert("Histórico removido", "error");
+            }
+        }
+
+        async function closeMonth() {
+            if (allExpenses.length === 0) return showAlert("Sem dados", "error");
+            
+            const dates = allExpenses.map(e => new Date(e.rawDate)).sort((a,b) => a - b);
+            const formatDate = (d) => d.toLocaleDateString('pt-BR');
+            const periodLabel = `aberto ${formatDate(dates[0])} - encerramento ${formatDate(new Date())}`;
+            
+            const total = allExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+            const catData = categories.map(cat => allExpenses.filter(e => e.category === cat).reduce((a, b) => a + b.amount, 0));
+
+            await db.collection("closed_months").add({
+                userId: auth.currentUser.uid, 
+                total, 
+                period: periodLabel,
+                categoryData: catData,
+                closedAt: Date.now()
+            });
+            
+            const batch = db.batch();
+            allExpenses.forEach(exp => batch.delete(db.collection("expenses").doc(exp.id)));
+            await batch.commit();
+            showAlert("Mês arquivado");
+        }
+
+        function render(data) {
+            const total = data.reduce((acc, curr) => acc + curr.amount, 0);
+            document.getElementById('totalDisplay').innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}`;
+            document.getElementById('countDisplay').innerText = data.length;
+            const list = document.getElementById('historyList');
+            list.innerHTML = "";
+            data.forEach(exp => {
+                list.innerHTML += `<div class="soft-card p-4 flex justify-between items-center bg-white">
+                    <div class="flex items-center gap-4">
+                        <div class="w-1.5 h-8 rounded-full" style="background-color: ${categoryColors[categories.indexOf(exp.category)]}"></div>
+                        <div>
+                            <p class="text-[11px] font-black uppercase tracking-tight">${exp.category}</p>
+                            <p class="text-[10px] text-accent font-semibold">${exp.note || '---'}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm font-bold">R$ ${exp.amount.toFixed(2)}</p>
+                        <button onclick="deleteItem('${exp.id}')" class="text-[8px] font-bold text-red-400 uppercase">Apagar</button>
+                    </div>
+                </div>`;
+            });
+            updateChart(data);
+        }
+
+        function renderClosedMonths(data) {
+            const list = document.getElementById('closedMonthsList');
+            list.innerHTML = "";
+            data.forEach((m, idx) => {
+                const canvasId = `chartClosed-${idx}`;
+                
+                // Gera a legenda baseada nos dados salvos
+                let legendHtml = '<div class="flex flex-wrap gap-x-3 gap-y-1 mt-3">';
+                categories.forEach((cat, cIdx) => {
+                    if (m.categoryData[cIdx] > 0) {
+                        legendHtml += `
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2 h-2 rounded-full" style="background-color: ${categoryColors[cIdx]}"></div>
+                            <span class="text-[8px] font-bold text-sub uppercase tracking-tighter">${cat}</span>
+                        </div>`;
+                    }
+                });
+                legendHtml += '</div>';
+
+                list.innerHTML += `
+                <div class="soft-card p-6 bg-white border border-gray-100">
+                    <div class="flex justify-between items-center">
+                        <div class="flex-1">
+                            <p class="text-[9px] font-bold text-sub uppercase tracking-widest mb-1">${m.period}</p>
+                            <p class="text-xl font-black tracking-tight mb-2">R$ ${m.total.toFixed(2)}</p>
+                            <button onclick="deleteClosedMonth('${m.id}')" class="text-[9px] font-bold text-red-500 uppercase tracking-tighter">Excluir Registro</button>
+                        </div>
+                        <div class="h-20 w-20 relative flex-shrink-0">
+                            <canvas id="${canvasId}"></canvas>
+                        </div>
+                    </div>
+                    ${legendHtml}
+                </div>`;
+                
+                setTimeout(() => {
+                    new Chart(document.getElementById(canvasId), {
+                        type: 'doughnut',
+                        data: { datasets: [{ data: m.categoryData, backgroundColor: categoryColors, borderWidth: 0 }] },
+                        options: { cutout: '75%', plugins: { legend: { display: false } }, maintainAspectRatio: false }
+                    });
+                }, 100);
+            });
+        }
+
+        function updateChart(data) {
+            const values = categories.map(cat => data.filter(e => e.category === cat).reduce((a, b) => a + b.amount, 0));
+            if (myChart) myChart.destroy();
+            myChart = new Chart(document.getElementById('expenseChart'), {
+                type: 'doughnut',
+                data: { datasets: [{ data: values, backgroundColor: categoryColors, borderWidth: 3, borderColor: '#FFFFFF' }] },
+                options: { cutout: '85%', plugins: { legend: { display: false } } }
+            });
+        }
+
+        function applyFilters() {
+            const start = document.getElementById('fStart').value;
+            const cat = document.getElementById('fCat').value;
+            let filtered = allExpenses.filter(exp => (cat === "Todas" || exp.category === cat) && (!start || exp.dateISO >= start));
+            render(filtered);
+        }
+
+        function resetFilters() {
+            document.getElementById('fStart').value = "";
+            document.getElementById('fCat').value = "Todas";
+            applyFilters();
+        }
+    </script>
+</body>
+</html>
