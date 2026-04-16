@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ReceivaWise | SpendWise Family</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+        :root {
+            --primary: #000000;
+            --accent: #34C759;
+            --bg: #FFFFFF;
+            --subtle: #F5F5F7;
+            --text-main: #1D1D1F;
+            --text-sub: #86868B;
+            --error: #FF3B30;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            letter-spacing: -0.01em;
+        }
+
+        #loaderOverlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--subtle);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #authContainer, #appContainer { display: none; }
+
+        .pure-glass {
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+        }
+
+        /* CLASSE DE DESTAQUE DO FILTRO */
+        .filter-active {
+            background: var(--primary) !important;
+            color: white !important;
+        }
+
+        .soft-card {
+            background: #FFFFFF;
+            border-radius: 28px;
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.03);
+            transition: all 0.2s ease;
+        }
+
+        .btn-action {
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 800;
+            font-size: 9px;
+        }
+
+        .btn-action:active { transform: scale(0.95); }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 99px;
+            font-size: 8px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .clean-input {
+            background: var(--subtle);
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            color: var(--text-main);
+        }
+
+        .clean-input:focus {
+            background: #FFFFFF;
+            border-color: rgba(0, 0, 0, 0.1);
+            outline: none;
+        }
+
+        .status-aberto { background: #E5E7EB; color: #4B5563; }
+        .status-recebido { background: #DCFCE7; color: #15803D; }
+        .status-vencido { background: #FEE2E2; color: #B91C1C; }
+        .status-cancelado { background: #F3F4F6; color: #9CA3AF; text-decoration: line-through; }
+
+        #customAlert {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            z-index: 9999;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #customAlert.show { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+
+<body class="pb-10">
+
+    <div id="loaderOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div id="customAlert" class="pure-glass px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-4 min-w-[280px]">
+        <div id="alertIcon" class="w-8 h-8 rounded-full flex items-center justify-center"></div>
+        <p id="alertText" class="text-xs font-bold uppercase tracking-wider"></p>
+    </div>
+
+    <div id="authContainer" class="min-h-screen items-center justify-center p-6 bg-subtle">
+        <div class="w-full max-w-sm soft-card p-10 bg-white text-center">
+            <h2 class="text-4xl font-extrabold tracking-tighter italic">SPEND<span class="font-light text-sub">Wise</span></h2>
+            <p class="text-sub text-[10px] mt-1 uppercase tracking-widest font-bold mb-10">Contas a Receber</p>
+            <div class="space-y-4 text-left">
+                <input type="email" id="authEmail" class="w-full clean-input rounded-xl p-4 text-sm" placeholder="e-mail">
+                <input type="password" id="authPassword" class="w-full clean-input rounded-xl p-4 text-sm" placeholder="senha">
+                <button onclick="handleLogin()" class="w-full bg-black text-white font-bold py-4 rounded-xl uppercase tracking-widest text-xs">Entrar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appContainer" class="max-w-md mx-auto px-4 pt-6">
+        <header class="flex justify-between items-center mb-6 px-2">
+            <div>
+                <h1 class="text-2xl font-black text-main tracking-tighter">SPENDWISE<span class="font-light text-accent">.PRO</span></h1>
+                <p id="userGreeting" class="text-[9px] text-sub font-bold uppercase tracking-widest"></p>
+            </div>
+            <button onclick="navigateTo('index.html')" class="w-10 h-10 rounded-full soft-card flex items-center justify-center text-black">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 0118 0z" /></svg>
+            </button>
+        </header>
+
+        <div class="flex gap-2 px-2 mb-4">
+            <button onclick="navigateTo('index.html')" class="flex-1 text-center bg-gray-100 text-gray-500 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest">Gastos</button>
+            <button onclick="navigateTo('receber.html')" class="flex-1 text-center bg-black text-white py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest">A Receber</button>
+        </div>
+
+        <section class="mb-8">
+            <div class="soft-card p-6 border border-gray-100 bg-white">
+                <div class="space-y-3">
+                    <input type="text" id="debtorName" placeholder="Nome do Devedor" class="w-full clean-input rounded-xl p-4 text-sm font-semibold">
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="date" id="dueDate" class="clean-input rounded-xl p-4 text-xs font-bold uppercase text-sub">
+                        <input type="number" id="value" placeholder="R$ 0,00" class="clean-input rounded-xl p-4 text-sm font-bold">
+                    </div>
+                    <input type="text" id="note" placeholder="Observação (ex: Venda notebook)" class="w-full clean-input rounded-xl p-4 text-sm">
+                    <button onclick="addReceivable()" class="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs mt-2">Criar Pendência</button>
+                </div>
+            </div>
+        </section>
+
+        <div class="flex gap-2 overflow-x-auto no-scrollbar mb-6 px-1">
+            <button id="btn-filter-todos" onclick="filterStatus('todos')" class="filter-active flex-shrink-0 pure-glass rounded-full px-5 py-2 text-[9px] font-bold uppercase tracking-wider transition-all">Todos</button>
+            <button id="btn-filter-aberto" onclick="filterStatus('aberto')" class="flex-shrink-0 pure-glass rounded-full px-5 py-2 text-[9px] font-bold uppercase tracking-wider transition-all">Abertos</button>
+            <button id="btn-filter-recebido" onclick="filterStatus('recebido')" class="flex-shrink-0 pure-glass rounded-full px-5 py-2 text-[9px] font-bold uppercase tracking-wider transition-all">Recebidos</button>
+        </div>
+
+        <div class="space-y-4">
+            <h3 class="text-xs font-bold text-sub uppercase tracking-[0.2em] px-2">Pendências de Recebimento</h3>
+            <div id="receivablesList" class="space-y-4"></div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCoQMsLBibpp14dILtemMuWBzTj_3mu2ZE",
+            authDomain: "spendwise-a92b3.firebaseapp.com",
+            projectId: "spendwise-a92b3",
+            storageBucket: "spendwise-a92b3.firebasestorage.app",
+            messagingSenderId: "64183948055",
+            appId: "1:64183948055:web:da38ae8f595c8e87771d52"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        let allReceivables = [];
+        let currentFilter = 'todos';
+
+        function navigateTo(url) {
+            document.getElementById('loaderOverlay').style.display = 'flex';
+            setTimeout(() => { window.location.href = url; }, 500);
+        }
+
+        function showAlert(msg, type = 'success') {
+            const alert = document.getElementById('customAlert');
+            const icon = document.getElementById('alertIcon');
+            const text = document.getElementById('alertText');
+            text.innerText = msg;
+            icon.style.backgroundColor = type === 'success' ? '#34C759' : '#FF3B30';
+            alert.classList.add('show');
+            setTimeout(() => alert.classList.remove('show'), 3000);
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value;
+            const pass = document.getElementById('authPassword').value;
+            try {
+                await auth.signInWithEmailAndPassword(email, pass);
+                showAlert("Acesso Autorizado");
+            } catch (e) { showAlert("Erro ao entrar", "error"); }
+        }
+
+        auth.onAuthStateChanged(user => {
+            const authContainer = document.getElementById('authContainer');
+            const appContainer = document.getElementById('appContainer');
+            if (user) {
+                authContainer.style.display = 'none';
+                appContainer.style.display = 'block';
+                document.getElementById('userGreeting').innerText = user.email.split('@')[0];
+                startSync(user.uid);
+            } else {
+                authContainer.style.display = 'flex';
+                appContainer.style.display = 'none';
+            }
+        });
+
+        function startSync(uid) {
+            db.collection("receivables").where("userId", "==", uid).onSnapshot(s => {
+                allReceivables = s.docs.map(d => ({ id: d.id, ...d.data() }));
+                render();
+            });
+        }
+
+        async function addReceivable() {
+            const name = document.getElementById('debtorName').value;
+            const date = document.getElementById('dueDate').value;
+            const val = parseFloat(document.getElementById('value').value);
+            const note = document.getElementById('note').value;
+            if (!name || !date || !val) return showAlert("Preencha os campos", "error");
+            await db.collection("receivables").add({
+                userId: auth.currentUser.uid,
+                name, dueDate: date, value: val, note, status: 'aberto', createdAt: Date.now()
+            });
+            document.getElementById('debtorName').value = '';
+            document.getElementById('dueDate').value = '';
+            document.getElementById('value').value = '';
+            document.getElementById('note').value = '';
+            showAlert("Conta registrada");
+        }
+
+        async function updateStatus(id, newStatus) {
+            await db.collection("receivables").doc(id).update({ status: newStatus });
+            showAlert(`Status: ${newStatus}`);
+        }
+
+        /* FUNÇÃO DE FILTRO ATUALIZADA COM DESTAQUE VISUAL */
+        function filterStatus(status) {
+            currentFilter = status;
+            
+            // Remove a classe de destaque de todos os botões de filtro
+            document.getElementById('btn-filter-todos').classList.remove('filter-active');
+            document.getElementById('btn-filter-aberto').classList.remove('filter-active');
+            document.getElementById('btn-filter-recebido').classList.remove('filter-active');
+            
+            // Adiciona a classe de destaque apenas no selecionado
+            document.getElementById(`btn-filter-${status}`).classList.add('filter-active');
+            
+            render();
+        }
+
+        function render() {
+            const list = document.getElementById('receivablesList');
+            list.innerHTML = "";
+            const today = new Date().toISOString().split('T')[0];
+            let filtered = allReceivables.filter(r => currentFilter === 'todos' || r.status === currentFilter);
+
+            filtered.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)).forEach(r => {
+                let status = r.status;
+                if (status === 'aberto' && r.dueDate < today) status = 'vencido';
+
+                list.innerHTML += `
+                <div class="soft-card p-6 bg-white relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <span class="status-badge status-${status}">${status}</span>
+                            <h4 class="text-lg font-black tracking-tight mt-2">${r.name}</h4>
+                            <p class="text-[10px] text-sub font-bold uppercase tracking-widest">Vence em: ${r.dueDate.split('-').reverse().join('/')}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xl font-black text-main">R$ ${r.value.toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-sub mb-5">${r.note || 'Sem observações'}</p>
+                    ${status !== 'recebido' && status !== 'cancelado' ? `
+                    <div class="grid grid-cols-2 gap-2 border-t pt-4">
+                        <button onclick="updateStatus('${r.id}', 'recebido')" class="btn-action bg-green-500 text-white py-3 rounded-xl">Baixar</button>
+                        <button onclick="updateStatus('${r.id}', 'cancelado')" class="btn-action bg-gray-100 text-gray-500 py-3 rounded-xl">Cancelar</button>
+                    </div>
+                    ` : `
+                    <div class="text-center pt-2">
+                         <button onclick="deleteReceivable('${r.id}')" class="text-[8px] font-bold text-red-400 uppercase tracking-widest">Excluir Registro</button>
+                    </div>
+                    `}
+                </div>`;
+            });
+        }
+
+        async function deleteReceivable(id) {
+            if (confirm("Excluir permanentemente?")) await db.collection("receivables").doc(id).delete();
+        }
+    </script>
+</body>
+</html>
